@@ -28,7 +28,7 @@ import java.util.List;
  * 
  * @author Liang Fei (liangfei0201 AT gmail DOT com)
  */
-public abstract class UnaryOperator extends Operator {
+public class UnaryOperator extends Operator {
 
 	private Expression parameter;
 	
@@ -45,9 +45,9 @@ public abstract class UnaryOperator extends Operator {
 		return parameter;
 	}
 
-	public void setParameter(Expression parameter) {
+	public void setParameter(Expression parameter) throws ParseException {
 		if (this.parameter != null)
-			throw new IllegalStateException("Can not modify parameter.");
+			throw new ParseException("Can not modify parameter.", getOffset());
 		this.parameter = parameter;
 		parameter.setParent(this);
 	}

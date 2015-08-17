@@ -27,6 +27,7 @@ import httl.spi.Interceptor;
 import httl.spi.Logger;
 import httl.spi.Switcher;
 import httl.spi.Translator;
+import httl.spi.parsers.TemplateParser;
 import httl.spi.translators.templates.AdaptiveTemplate;
 import httl.spi.translators.templates.CompiledTemplate;
 import httl.spi.translators.templates.CompiledVisitor;
@@ -485,7 +486,6 @@ public class CompiledTranslator implements Translator {
 			visitor.setImportGetters(importGetters);
 			visitor.setImportTypes(importTypes);
 			visitor.setImportMethods(functions);
-			visitor.setImportSequences(sequences);
 			visitor.setOutputEncoding(outputEncoding);
 			visitor.setSourceInClass(sourceInClass);
 			visitor.setTextFilter(textFilter);

@@ -16,45 +16,11 @@
 package httl.spi.parsers;
 
 import httl.Node;
-import httl.ast.AddOperator;
-import httl.ast.AndOperator;
-import httl.ast.ArrayOperator;
 import httl.ast.BinaryOperator;
-import httl.ast.BitAndOperator;
-import httl.ast.BitNotOperator;
-import httl.ast.BitOrOperator;
-import httl.ast.BitXorOperator;
-import httl.ast.CastOperator;
-import httl.ast.ConditionOperator;
 import httl.ast.Constant;
-import httl.ast.DivOperator;
-import httl.ast.EntryOperator;
-import httl.ast.EqualsOperator;
 import httl.ast.Expression;
-import httl.ast.GreaterEqualsOperator;
-import httl.ast.GreaterOperator;
-import httl.ast.IndexOperator;
-import httl.ast.InstanceofOperator;
-import httl.ast.LeftShiftOperator;
-import httl.ast.LessEqualsOperator;
-import httl.ast.LessOperator;
-import httl.ast.ListOperator;
-import httl.ast.MethodOperator;
-import httl.ast.ModOperator;
-import httl.ast.MulOperator;
-import httl.ast.NegativeOperator;
-import httl.ast.NewOperator;
-import httl.ast.NotEqualsOperator;
-import httl.ast.NotOperator;
 import httl.ast.Operator;
-import httl.ast.OrOperator;
-import httl.ast.PositiveOperator;
-import httl.ast.RightShiftOperator;
-import httl.ast.SequenceOperator;
-import httl.ast.StaticMethodOperator;
-import httl.ast.SubOperator;
 import httl.ast.UnaryOperator;
-import httl.ast.UnsignShiftOperator;
 import httl.ast.Variable;
 import httl.spi.Filter;
 import httl.spi.Parser;
@@ -85,51 +51,6 @@ import java.util.regex.Pattern;
  */
 public class ExpressionParser implements Parser {
 
-	private Filter expressionFilter;
-
-	private List<String> forbidEqualsMethods;
-
-	private List<String> forbidStartsMethods;
-
-	private List<String> forbidEndsMethods;
-
-	private String[] importPackages;
-
-	public void setImportPackages(String[] importPackages) {
-		this.importPackages = importPackages;
-	}
-
-	/**
-	 * httl.properties: expression.filters=httl.spi.filters.UnescapeXmlFilter
-	 */
-	public void setExpressionFilter(Filter expressionFilter) {
-		this.expressionFilter = expressionFilter;
-	}
-
-	/**
-	 * httl.properties: import.getters=forbid.methods=add,put,save,insert,modify,update,delete,remove,clear
-	 */
-	public void setForbidMethods(String[] forbidMethods) {
-		for (String method : forbidMethods) {
-			if (method.startsWith("*")) {
-				if (forbidEndsMethods == null) {
-					forbidEndsMethods = new ArrayList<String>();
-				}
-				forbidEndsMethods.add(method.substring(1));
-			} else if (method.endsWith("*")) {
-				if (forbidStartsMethods == null) {
-					forbidStartsMethods = new ArrayList<String>();
-				}
-				forbidStartsMethods.add(method.substring(0, method.length() - 1));
-			} else {
-				if (forbidEqualsMethods == null) {
-					forbidEqualsMethods = new ArrayList<String>();
-				}
-				forbidEqualsMethods.add(method);
-			}
-		}
-	}
-
 	//单字母命名, 保证状态机图简洁
 	
 	// BREAK，结束片段，包含当前字符
@@ -148,7 +69,7 @@ public class ExpressionParser implements Parser {
 	// 行表示状态
 	// 行列交点表示, 在该状态时, 遇到某类型的字符时, 切换到的下一状态(数组行号)
 	// E/B/T表示接收前面经过的字符为一个片断, R表示错误状态(这些状态均为负数)
-	static final int states[][] = {
+	static final int[][] states = {
 				  // 0.空格, 1.字母, 2.数字, 3.点号, 4.双引号, 5.单引号, 6.反单引号, 7.反斜线, 8.括号, 9.其它
 		/* 0.起始  */ { 0, 1, 2, 5, 7, 9, 11, 4, 6, 4}, // 初始状态或上一片断刚接收完成状态
 		/* 1.变量  */{ B1, 1, 1, B1, E, E, E, B1, B1, B1}, // 变量名识别
@@ -210,10 +131,55 @@ public class ExpressionParser implements Parser {
 	
 	private static final Set<String> BINARY_OPERATORS = new HashSet<String>(Arrays.asList(new String[]{"+", "-", "*", "/", "%", "==", "!=", ">", ">=", "<", "<=", "gt", "ge", "lt", "le", "&&", "||", "&", "|", "^", ">>", "<<", ">>>", ",", "?", ":", "instanceof", "is", "[", ".."}));
 	
-	private static final Set<String> UNARY_OPERATORS = new HashSet<String>(Arrays.asList(new String[]{"+", "-", "!", "~", "new", "["}));
+	private static final Set<String> UNARY_OPERATORS = new HashSet<String>(Arrays.asList(new String[]{"+", "-", "!", "~", "new", "[", "{"}));
 
 	private static final Pattern BLANK_PATTERN = Pattern.compile("^(\\s+)");
 	
+	private Filter expressionFilter;
+
+	private List<String> forbidEqualsMethods;
+
+	private List<String> forbidStartsMethods;
+
+	private List<String> forbidEndsMethods;
+
+	private String[] importPackages;
+
+	public void setImportPackages(String[] importPackages) {
+		this.importPackages = importPackages;
+	}
+
+	/**
+	 * httl.properties: expression.filters=httl.spi.filters.UnescapeXmlFilter
+	 */
+	public void setExpressionFilter(Filter expressionFilter) {
+		this.expressionFilter = expressionFilter;
+	}
+
+	/**
+	 * httl.properties: import.getters=forbid.methods=add,put,save,insert,modify,update,delete,remove,clear
+	 */
+	public void setForbidMethods(String[] forbidMethods) {
+		for (String method : forbidMethods) {
+			if (method.startsWith("*")) {
+				if (forbidEndsMethods == null) {
+					forbidEndsMethods = new ArrayList<String>();
+				}
+				forbidEndsMethods.add(method.substring(1));
+			} else if (method.endsWith("*")) {
+				if (forbidStartsMethods == null) {
+					forbidStartsMethods = new ArrayList<String>();
+				}
+				forbidStartsMethods.add(method.substring(0, method.length() - 1));
+			} else {
+				if (forbidEqualsMethods == null) {
+					forbidEqualsMethods = new ArrayList<String>();
+				}
+				forbidEqualsMethods.add(method);
+			}
+		}
+	}
+
 	private int getTokenOffset(Token token) {
 		int offset = token.getOffset();
 		String msg = token.getMessage();
@@ -227,83 +193,74 @@ public class ExpressionParser implements Parser {
 		return offset;
 	}
 
-	private UnaryOperator createUnaryOperator(String name, int priority, int offset) {
-		if ("+".equals(name)) {
-			return new PositiveOperator(name, priority, offset);
-		} else if ("-".equals(name)) {
-			return new NegativeOperator(name, priority, offset);
-		} else if ("!".equals(name)) {
-			return new NotOperator(name, priority, offset);
-		} else if ("~".equals(name)) {
-			return new BitNotOperator(name, priority, offset);
-		} else if ("[".equals(name)) {
-			return new ListOperator(name, priority, offset);
-		} else if (name.startsWith("new ")) {
-			return new NewOperator(name.substring(4), priority, offset);
-		} else if (StringUtils.isFunction(name)) {
-			return new StaticMethodOperator(name.substring(1), priority, offset);
-		} else if (StringUtils.isTyped(name)) {
-			return new CastOperator(name, priority, offset);
+	private static final Map<String, String> UNARY_OPERATOR_NAMES;
+
+	private static final Map<String, String> BINARY_OPERATOR_NAMES;
+	
+	static {
+		Map<String, String> unary = new HashMap<String, String>();
+		unary.put("+", "pos");
+		unary.put("-", "neg");
+		unary.put("!", "not");
+		unary.put("~", "bitnot");
+		unary.put("[", "list");
+		unary.put("{", "map");
+		unary.put("new ", "new");
+		unary.put("(", "cast");
+		UNARY_OPERATOR_NAMES = Collections.unmodifiableMap(unary);
+		
+		Map<String, String> binary = new HashMap<String, String>();
+		binary.put("+", "add");
+		binary.put("-", "sub");
+		binary.put("*", "mul");
+		binary.put("/", "div");
+		binary.put("%", "mod");
+		binary.put("==", "eq");
+		binary.put("!=", "ne");
+		binary.put(">", "gt");
+		binary.put(">=", "ge");
+		binary.put("<", "lt");
+		binary.put("<=", "le");
+		binary.put("&&", "and");
+		binary.put("||", "or");
+		binary.put("&", "bitand");
+		binary.put("|", "bitor");
+		binary.put("^", "xor");
+		binary.put(">>", "rs");
+		binary.put("<<", "ls");
+		binary.put(">>>", "us");
+		binary.put(",", "array");
+		binary.put("?", "select");
+		binary.put(":", "kv");
+		binary.put("instanceof", "is");
+		binary.put("[", "get");
+		binary.put("..", "seq");
+		BINARY_OPERATOR_NAMES = Collections.unmodifiableMap(binary);
+	}
+
+	private UnaryOperator createUnaryOperator(String operator, int priority, int offset) throws ParseException {
+		String name = UNARY_OPERATOR_NAMES.get(operator);
+		if (StringUtils.isNotEmpty(name)) {
+			return new UnaryOperator(name, priority, offset);
+		} else if (operator.startsWith(".")) {
+			return new UnaryOperator(operator.substring(1), priority, offset);
+		} else if (operator.startsWith("new ")) {
+			return new UnaryOperator(operator, priority, offset);
+		} else if (StringUtils.isClassName(operator)) {
+			return new UnaryOperator("(" + operator + ")", priority, offset);
 		} else {
-			throw new UnsupportedOperationException("Unsupported unary operator " + name);
+			throw new ParseException("Unsupported unary operator " + operator, offset);
 		}
 	}
 
-	private BinaryOperator createBinaryOperator(String name, int priority, int offset) {
-		if ("+".equals(name)) {
-			return new AddOperator(name, priority, offset);
-		} else if ("-".equals(name)) {
-			return new SubOperator(name, priority, offset);
-		} else if ("*".equals(name)) {
-			return new MulOperator(name, priority, offset);
-		} else if ("/".equals(name)) {
-			return new DivOperator(name, priority, offset);
-		} else if ("%".equals(name)) {
-			return new ModOperator(name, priority, offset);
-		} else if ("==".equals(name)) {
-			return new EqualsOperator(name, priority, offset);
-		} else if ("!=".equals(name)) {
-			return new NotEqualsOperator(name, priority, offset);
-		} else if (">".equals(name)) {
-			return new GreaterOperator(name, priority, offset);
-		} else if (">=".equals(name)) {
-			return new GreaterEqualsOperator(name, priority, offset);
-		} else if ("<".equals(name)) {
-			return new LessOperator(name, priority, offset);
-		} else if ("<=".equals(name)) {
-			return new LessEqualsOperator(name, priority, offset);
-		} else if ("&&".equals(name)) {
-			return new AndOperator(name, priority, offset);
-		} else if ("||".equals(name)) {
-			return new OrOperator(name, priority, offset);
-		} else if ("&".equals(name)) {
-			return new BitAndOperator(name, priority, offset);
-		} else if ("|".equals(name)) {
-			return new BitOrOperator(name, priority, offset);
-		} else if ("^".equals(name)) {
-			return new BitXorOperator(name, priority, offset);
-		} else if (">>".equals(name)) {
-			return new RightShiftOperator(name, priority, offset);
-		} else if ("<<".equals(name)) {
-			return new LeftShiftOperator(name, priority, offset);
-		} else if (">>>".equals(name)) {
-			return new UnsignShiftOperator(name, priority, offset);
-		} else if (",".equals(name)) {
-			return new ArrayOperator(name, priority, offset);
-		} else if ("?".equals(name)) {
-			return new ConditionOperator(name, priority, offset);
-		} else if (":".equals(name)) {
-			return new EntryOperator(name, priority, offset);
-		} else if ("instanceof".equals(name)) {
-			return new InstanceofOperator(name, priority, offset);
-		} else if ("[".equals(name)) {
-			return new IndexOperator(name, priority, offset);
-		} else if ("..".equals(name)) {
-			return new SequenceOperator(name, priority, offset);
-		} else if (StringUtils.isFunction(name)) {
-			return new MethodOperator(name.substring(1), priority, offset);
+	private BinaryOperator createBinaryOperator(String operator, int priority, int offset) throws ParseException {
+		String name = BINARY_OPERATOR_NAMES.get(operator);
+		if (StringUtils.isNotEmpty(name)) {
+			return new BinaryOperator(name, priority, offset);
+		} else if (StringUtils.isFunction(operator)) {
+			return new BinaryOperator(operator.substring(1), priority, offset);
 		} else {
-			throw new UnsupportedOperationException("Unsupported binary operator " + name);
+			throw new ParseException("Unsupported binary operator " + operator, offset);
 		}
 	}
 
@@ -375,8 +332,11 @@ public class ExpressionParser implements Parser {
 			return priority;
 		}
 		priority --;
-		if ("?".equals(operator)
-				|| ":".equals(operator)) {
+		if (":".equals(operator)) {
+			return priority;
+		}
+		priority --;
+		if ("?".equals(operator)) {
 			return priority;
 		}
 		priority --;
@@ -544,6 +504,9 @@ public class ExpressionParser implements Parser {
 			} else if ("]".equals(msg)) {
 				while (popOperator(parameterStack, operatorStack, operatorTokens, offset) != Bracket.SQUARE);
 				beforeOperator = false;
+			} else if ("}".equals(msg)) {
+				while (popOperator(parameterStack, operatorStack, operatorTokens, offset) != Bracket.BRACE);
+				beforeOperator = false;
 			} else {
 				if (StringUtils.isFunction(msg)) {
 					String method = msg.substring(1);
@@ -591,6 +554,8 @@ public class ExpressionParser implements Parser {
 				}
 				if ("[".equals(msg)) {
 					operatorStack.push(Bracket.SQUARE);
+				} else if ("{".equals(msg)) {
+					operatorStack.push(Bracket.BRACE);
 				}
 				beforeOperator = true;
 				// 给无参函数自动补上null参数
@@ -651,6 +616,8 @@ public class ExpressionParser implements Parser {
 		public static final Bracket ROUND = new Bracket("(");
 		
 		public static final Bracket SQUARE = new Bracket("[");
+
+		public static final Bracket BRACE = new Bracket("{");
 
 		private Bracket(String name) {
 			super(name, Integer.MAX_VALUE, 0);

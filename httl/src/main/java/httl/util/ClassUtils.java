@@ -145,7 +145,11 @@ public class ClassUtils {
 				&& ! className.contains(".") && ! CLASS_CACHE.containsKey(className)) {
 			for (String pkg : packages) {
 				try {
-					return _forName(pkg + "." + className);
+					if(pkg.endsWith(className)) {
+						return _forName(pkg);
+					} else {
+						return _forName(pkg + "." + className);
+					}
 				} catch (ClassNotFoundException e2) {
 				}
 			}

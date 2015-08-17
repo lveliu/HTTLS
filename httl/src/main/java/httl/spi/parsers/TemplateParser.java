@@ -34,6 +34,8 @@ import httl.ast.Statement;
 import httl.ast.Text;
 import httl.ast.ValueDirective;
 import httl.spi.Parser;
+import httl.spi.translators.CompiledTranslator;
+import httl.spi.translators.templates.CompiledVisitor;
 import httl.util.ClassUtils;
 import httl.util.DfaScanner;
 import httl.util.LinkedStack;
@@ -41,14 +43,9 @@ import httl.util.ParameterizedTypeImpl;
 import httl.util.StringUtils;
 import httl.util.Token;
 
-import java.io.IOException;
 import java.lang.reflect.Type;
 import java.text.ParseException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
@@ -139,7 +136,7 @@ public class TemplateParser implements Parser {
 			case 'H' : case 'I' : case 'J' : case 'K' : case 'L' : case 'M' : case 'N' :
 			case 'O' : case 'P' : case 'Q' : case 'R' : case 'S' : case 'T' :
 			case 'U' : case 'V' : case 'W' : case 'X' : case 'Y' : case 'Z' :
-			return 1;
+				return 1;
 			case '#' : 
 				return 2;
 			case '$' : 
@@ -182,6 +179,46 @@ public class TemplateParser implements Parser {
 		}
 	};
 
+	private static final Pattern ESCAPE_PATTERN = Pattern.compile("\\\\+[#$]");
+
+	private String[] setDirective = new String[] { "set" };
+
+	private String[] ifDirective = new String[] { "if" };
+
+	private String[] elseDirective = new String[] { "else" };
+
+	private String[] forDirective = new String[] { "for" };
+
+	private String[] breakDirective = new String[] { "break" };
+
+	private String[] macroDirective = new String[] { "macro" };
+
+	private String[] endDirective = new String[] { "end" };
+
+	private String[] importDirective = new String[]{"import"};
+
+	private Engine engine;
+
+	private Parser expressionParser;
+	
+	private String[] importMacros;
+   
+	private final Map<String, Template> importMacroTemplates = new ConcurrentHashMap<String, Template>();
+
+	private String[] importPackages;
+
+	private String[] importVariables;
+
+	private Map<String, Class<?>> importTypes;
+
+	private final Map<Class<?>, Object> functions = new ConcurrentHashMap<Class<?>, Object>();
+
+	private Class<?> defaultVariableType;
+	// 用于#import导入包的统一  httl.properties: compiled.translator = httl.spi.translators.CompiledTranslator
+	private CompiledTranslator compiledTranslator;
+
+	private boolean removeDirectiveBlankLine = true;
+
 	private boolean isDirective(String message) {
 		if (message.length() > 1 && message.charAt(0) == '#'
 				&& message.charAt(1) >= 'a' && message.charAt(1) <= 'z') {
@@ -196,10 +233,11 @@ public class TemplateParser implements Parser {
 		return StringUtils.inArray(name, setDirective)
 				|| StringUtils.inArray(name, ifDirective) || StringUtils.inArray(name, elseDirective) 
 				|| StringUtils.inArray(name, forDirective) || StringUtils.inArray(name, breakDirective) 
-				|| StringUtils.inArray(name, macroDirective) || StringUtils.inArray(name, endDirective);
+				|| StringUtils.inArray(name, macroDirective) || StringUtils.inArray(name, endDirective)
+				|| StringUtils.inArray(name, importDirective);
 	}
 	
-	private void defineVariableTypes(String value, int offset, List<Statement> directives) throws IOException, ParseException {
+	private void defineVariableTypes(String value, int offset, List<Statement> directives) throws ParseException {
 		int o = offset;
 		for (String v : splitDefine(value)) {
 			v = v.trim().replaceAll("\\s", " ");
@@ -222,7 +260,7 @@ public class TemplateParser implements Parser {
 		return node instanceof Text && ! ((Text) node).isLiteral();
 	}
 
-	private List<Statement> clean(List<Statement> nodes) throws ParseException, IOException {
+	private List<Statement> clean(List<Statement> nodes) throws ParseException {
 		List<Statement> result = null;
 		for (int i = 0; i < nodes.size(); i ++) {
 			if (i + 1 < nodes.size() && isNoLiteralText(nodes.get(i)) && isNoLiteralText(nodes.get(i + 1))) {
@@ -250,7 +288,7 @@ public class TemplateParser implements Parser {
 		return nodes;
 	}
 
-	private List<Statement> scan(String source, int sourceOffset) throws ParseException, IOException {
+	private List<Statement> scan(String source, int sourceOffset) throws ParseException {
 		List<Statement> directives = new ArrayList<Statement>();
 		List<Token> tokens = scanner.scan(source, sourceOffset);
 		AtomicInteger seq = new AtomicInteger();
@@ -350,6 +388,8 @@ public class TemplateParser implements Parser {
 					if (j > 0) {
 						type = var.substring(0, j).trim();
 						var = var.substring(j + 1).trim();
+					} else {
+						type = "Map";
 					}
 					directives.add(new ForDirective(parseGenericType(type, exprOffset), var, expression, offset));
 				} else if (StringUtils.inArray(name, ifDirective)) {
@@ -420,6 +460,20 @@ public class TemplateParser implements Parser {
 					}
 				} else if (StringUtils.inArray(name, endDirective)) {
 					directives.add(new EndDirective(offset));
+				} else if (StringUtils.inArray(name, importDirective)) {
+					// 导入包
+					List<String> packages = new ArrayList<String>();
+					for (int i = 0;i < importPackages.length; i++) {
+						packages.add(importPackages[i]);
+					}
+					packages.add(value);
+					importPackages = packages.toArray(new String[1]);
+					compiledTranslator.setImportPackages(packages.toArray(new String[1]));
+					// 导入方法
+					functions.put(ClassUtils.forName(value),ClassUtils.forName(value));
+					Object[] method = {ClassUtils.forName(value)};
+					compiledTranslator.setImportMethods(method);
+					//
 				}
 			} else if (message.endsWith("}") && (message.startsWith("${") || message.startsWith("$!{")
 					|| message.startsWith("#{") || message.startsWith("#!{"))) {
@@ -484,7 +538,7 @@ public class TemplateParser implements Parser {
 		if (! directiveStack.isEmpty()) { // 后验条件
 			throw new ParseException("Miss #end directive." + root.getClass().getSimpleName(), root.getOffset());
 		}
-		return (BlockDirective) root;
+		return root;
 	}
 
 	// 指令归约辅助封装类
@@ -492,7 +546,7 @@ public class TemplateParser implements Parser {
 
 		private BlockDirective blockDirective;
 
-		private List<Node> elements = new ArrayList<Node>();
+		private List<Statement> elements = new ArrayList<Statement>();
 
 		BlockDirectiveEntry(BlockDirective blockDirective) {
 			this.blockDirective = blockDirective;
@@ -509,42 +563,6 @@ public class TemplateParser implements Parser {
 
 	}
 	
-	private static final Pattern ESCAPE_PATTERN = Pattern.compile("\\\\+[#$]");
-
-	private String[] setDirective = new String[] { "var" };
-
-	private String[] ifDirective = new String[] { "if" };
-
-	private String[] elseDirective = new String[] { "else" };
-
-	private String[] forDirective = new String[] { "for" };
-
-	private String[] breakDirective = new String[] { "break" };
-
-	private String[] macroDirective = new String[] { "macro" };
-
-	private String[] endDirective = new String[] { "end" };
-
-	private Engine engine;
-	
-	private Parser expressionParser;
-	
-	private String[] importMacros;
-   
-	private final Map<String, Template> importMacroTemplates = new ConcurrentHashMap<String, Template>();
-
-	private String[] importPackages;
-
-	private String[] importVariables;
-
-	private Map<String, Class<?>> importTypes;
-
-	private final Map<Class<?>, Object> functions = new ConcurrentHashMap<Class<?>, Object>();
-
-	private Class<?> defaultVariableType;
-
-	private boolean removeDirectiveBlankLine = true;
-
 	/**
 	 * httl.properties: remove.directive.blank.line=true
 	 */
@@ -655,7 +673,15 @@ public class TemplateParser implements Parser {
 			}
 		}
 	}
-	
+
+	public CompiledTranslator getCompiledTranslator() {
+		return compiledTranslator;
+	}
+
+	public void setCompiledTranslator(CompiledTranslator compiledTranslator) {
+		this.compiledTranslator = compiledTranslator;
+	}
+
 	/**
 	 * init.
 	 */
@@ -688,7 +714,7 @@ public class TemplateParser implements Parser {
 		}
 	}
 
-	public Node parse(String source, int offset) throws IOException, ParseException {
+	public Node parse(String source, int offset) throws ParseException {
 		return reduce(trim(clean(scan(source, offset))));
 	}
 
@@ -697,7 +723,7 @@ public class TemplateParser implements Parser {
 	 * 
 	 * @author subchen@gmail.com
 	 */
-	private List<Statement> trim(List<Statement> nodes) throws ParseException, IOException {
+	private List<Statement> trim(List<Statement> nodes) throws ParseException {
 		if (! removeDirectiveBlankLine) {
 			return nodes;
 		}
@@ -808,7 +834,7 @@ public class TemplateParser implements Parser {
 		return buf.toString().substring(0, buf.length() - 1); // 减掉预加的#号
 	}
 
-	private Type parseGenericType(String type, int offset) throws IOException, ParseException {
+	private Type parseGenericType(String type, int offset) throws ParseException {
 		if (StringUtils.isBlank(type)) {
 			return null;
 		}
@@ -844,7 +870,7 @@ public class TemplateParser implements Parser {
 		return raw;
 	}
 
-	private void parseGenericTypeString(String type, int offset, List<String> types, List<Integer> offsets) throws IOException, ParseException {
+	private void parseGenericTypeString(String type, int offset, List<String> types, List<Integer> offsets) throws ParseException {
 		StringBuilder buf = new StringBuilder();
 		int begin = 0;
 		for (int j = 0; j < type.length(); j ++) {

@@ -85,9 +85,6 @@ public final class Context implements Map<String, Object> {
 	 * @param current - current variables
 	 */
 	public static Context pushContext(Map<String, Object> current) {
-		if (current instanceof Context) {
-			throw new IllegalArgumentException("Don't use the " + Context.class.getName() + " type as render() parameters, it implicitly delivery.");
-		}
 		Context context = new Context(getContext(), current);
 		LOCAL.set(context);
 		return context;
@@ -140,14 +137,26 @@ public final class Context implements Map<String, Object> {
 		this.thread = parent == null ? Thread.currentThread() : parent.thread;
 		this.level = parent == null ? 0 : parent.getLevel() + 1;
 		this.parent = parent;
-		this.current = current;
+		setCurrent(current);
 	}
 
 	// Check the cross-thread use.
 	private void checkThread() {
 		if (Thread.currentThread() != thread) {
-			throw new IllegalStateException("Don't cross-thread using " + Context.class.getName() + " object.");
+			throw new IllegalStateException("Don't cross-thread using the " 
+					+ Context.class.getName() + " object, it's thread-local only. context thread: " 
+					+ thread.getName() + ", current thread: " + Thread.currentThread().getName());
 		}
+	}
+
+	// Set the current context
+	private void setCurrent(Map<String, Object> current) {
+		if (current instanceof Context) {
+			throw new IllegalArgumentException("Don't using the " + Context.class.getName() 
+					+ " object as a parameters, it's implicitly delivery by thread-local. parameter context: "
+					+ ((Context) current).thread.getName() + ", current context: " + thread.getName());
+		}
+		this.current = current;
 	}
 
 	/**
@@ -190,10 +199,10 @@ public final class Context implements Map<String, Object> {
 	 */
 	public Context setTemplate(Template template) {
 		checkThread();
-		this.template = template;
 		if (template != null) {
 			setEngine(template.getEngine());
 		}
+		this.template = template;
 		return this;
 	}
 
@@ -215,15 +224,17 @@ public final class Context implements Map<String, Object> {
 	 */
 	public Context setEngine(Engine engine) {
 		checkThread();
-		if (engine != null && engine != this.engine) {
+		if (engine != null) {
 			if (template != null && template.getEngine() != engine) {
-				throw new IllegalStateException("template.engine != context.engine");
+				throw new IllegalStateException("Failed to set the context engine, because is not the same to template engine. template engine: " 
+						+ template.getEngine().getName() + ", context engine: " + engine.getName() 
+						+ ", template: "+ template.getName() + ", context: " + thread.getName());
 			}
-			if (parent != null && parent.getEngine() == null) {
+			if (parent != null && parent.getEngine() != engine) {
 				parent.setEngine(engine);
 			}
 			if (this.engine == null) {
-				current = engine.createContext(parent, current);
+				setCurrent(engine.createContext(parent, current));
 			}
 		}
 		this.engine = engine;
@@ -323,7 +334,7 @@ public final class Context implements Map<String, Object> {
 
 	public Object put(String key, Object value) {
 		checkThread();
-		if (current == null) { // safe in thread local
+		if (current == null) {
 			current = new HashMap<String, Object>();
 		}
 		return current.put(key, value);
@@ -331,7 +342,7 @@ public final class Context implements Map<String, Object> {
 
 	public void putAll(Map<? extends String, ? extends Object> m) {
 		checkThread();
-		if (current == null) { // safe in thread local
+		if (current == null) {
 			current = new HashMap<String, Object>();
 		}
 		current.putAll(m);

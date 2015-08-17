@@ -30,12 +30,18 @@ import java.util.regex.Pattern;
  */
 public class StringUtils {
 
-	private static final Pattern NUMBER_PATTERN = Pattern.compile("^[0-9]+(\\.[.0-9]+)?[BSILFDbsilfd]?$");
+	private static final Pattern NUMBER_PATTERN = Pattern.compile("^[+\\-]?[0-9]+(\\.[.0-9]+)?[BSILFDbsilfd]?$");
 
 	private static final Pattern SYMBOL_PATTERN = Pattern.compile("[^(_a-zA-Z0-9)]");
 
+	private static final Pattern CLASS_NAME_PATTERN = Pattern.compile("[_a-zA-Z][\\._a-zA-Z0-9]+");
+
 	public static String getVaildName(String name) {
 		return SYMBOL_PATTERN.matcher(name).replaceAll("_");
+	}
+
+	public static boolean isClassName(String value) {
+		return isEmpty(value) ? false : CLASS_NAME_PATTERN.matcher(value).matches();
 	}
 
 	public static boolean isNumber(String value) {
@@ -127,7 +133,13 @@ public class StringUtils {
 	public static boolean isNotBlank(String value) {
 		return ! isBlank(value);
 	}
-	
+
+	public static String valueOf(Object value) {
+		if (value == null)
+			return "";
+		return toString(value);
+	}
+
 	public static String toString(Object value) {
 		if (value == null)
 			return null;
@@ -1058,7 +1070,7 @@ public class StringUtils {
 				if (StringUtils.isNotEmpty(method)) {
 					code = "(" + code + ") != null && (" + code + ")." + method + " > 0";
 				} else {
-					code = "(" + code + ") != null";
+					code = ClassUtils.class.getCanonicalName() + ".isTrue(" + code + ")";
 				}
 			}
 		}
